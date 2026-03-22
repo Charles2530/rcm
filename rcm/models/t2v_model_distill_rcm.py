@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import collections
 import math
+import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Literal
@@ -47,6 +48,7 @@ from rcm.conditioner import DataType, TextCondition
 from rcm.utils.optim_instantiate_dtensor import get_base_scheduler
 from rcm.utils.checkpointer import non_strict_load_model
 from rcm.utils.context_parallel import broadcast
+from rcm.utils.model_utils import load_state_dict, load_state_dict_from_folder
 from rcm.utils.dtensor_helper import DTensorFastEmaModelUpdater, broadcast_dtensor_model_states
 from rcm.utils.fsdp_helper import hsdp_device_mesh
 from rcm.utils.jvp_helper import TensorWithT
@@ -54,6 +56,7 @@ from rcm.utils.misc import count_params
 from rcm.utils.torch_future import clip_grad_norm_
 from rcm.utils.denoiser_scaling import RectifiedFlow_TrigFlowWrapper
 from rcm.utils.timestep_utils import LogNormal, rf_to_trig_time
+from rcm.utils.umt5 import get_umt5_embedding
 from rcm.configs.defaults.ema import EMAConfig
 from rcm.samplers.euler import FlowEulerSampler
 from rcm.samplers.unipc import FlowUniPCMultistepSampler
@@ -80,6 +83,8 @@ class T2VDistillConfig_rCM:
     net_fake_score: LazyDict = None
     optimizer_fake_score: LazyDict = None
     teacher_ckpt: str = ""
+    teacher_ckpt_2: str = ""
+    teacher_boundary_ratio: float = 0.875
     tangent_warmup: int = 0
     teacher_guidance: float = 5.0
     grad_clip: bool = False
@@ -185,7 +190,53 @@ class T2VDistillModel_rCM(ImaginaireModel):
                     assert isinstance(param, DTensor), f"param should be DTensor, {name} got {type(param)}"
         return net
 
+    def _is_dcp_checkpoint(self, ckpt_path: str) -> bool:
+        return os.path.isdir(ckpt_path) and os.path.exists(os.path.join(ckpt_path, ".metadata"))
+
+    def _load_regular_checkpoint(self, ckpt_path: str) -> Mapping[str, Any]:
+        if os.path.isdir(ckpt_path):
+            state_dict = load_state_dict_from_folder(ckpt_path)
+        else:
+            state_dict = load_state_dict(ckpt_path)
+
+        while isinstance(state_dict, Mapping):
+            if "state_dict" in state_dict and isinstance(state_dict["state_dict"], Mapping):
+                state_dict = state_dict["state_dict"]
+                continue
+            if "model" in state_dict and isinstance(state_dict["model"], Mapping):
+                state_dict = state_dict["model"]
+                continue
+            break
+
+        if not isinstance(state_dict, Mapping):
+            raise ValueError(f"Loaded checkpoint from {ckpt_path} is not a mapping, got {type(state_dict)}")
+        return state_dict
+
+    def _strip_state_dict_prefix(self, state_dict: Mapping[str, Any], prefix: str) -> collections.OrderedDict:
+        normalized = collections.OrderedDict()
+        for k, v in state_dict.items():
+            if not isinstance(k, str):
+                continue
+            if k.startswith("module."):
+                k = k[len("module.") :]
+            normalized[k] = v
+
+        prefix_dot = f"{prefix}."
+        if any(k.startswith(prefix_dot) for k in normalized.keys()):
+            return collections.OrderedDict((k[len(prefix_dot) :], v) for k, v in normalized.items() if k.startswith(prefix_dot))
+        return normalized
+
     def load_ckpt_to_net(self, net, ckpt_path, prefix="net"):
+        if not self._is_dcp_checkpoint(ckpt_path):
+            state_dict = self._strip_state_dict_prefix(self._load_regular_checkpoint(ckpt_path), prefix=prefix)
+            log.info(f"Loading non-DCP checkpoint from {ckpt_path}")
+            try:
+                log.info(set_model_state_dict(net, state_dict, options=StateDictOptions(strict=False)))
+            except Exception:
+                log.warning("set_model_state_dict failed for non-DCP checkpoint, falling back to non-strict load.")
+                log.info(non_strict_load_model(net, state_dict), rank0_only=False)
+            return
+
         storage_reader = FileSystemReader(ckpt_path)
         _state_dict = get_model_state_dict(net)
 
@@ -226,16 +277,26 @@ class T2VDistillModel_rCM(ImaginaireModel):
             self.conditioner = lazy_instantiate(config.conditioner)
             assert sum(p.numel() for p in self.conditioner.parameters() if p.requires_grad) == 0, "conditioner should not have learnable parameters"
             self.net, self.net_teacher = self.build_net(config.net), self.build_net(config.net_teacher)
+            self.net_teacher_2 = self.build_net(config.net_teacher) if config.teacher_ckpt_2 else None
             self.net_fake_score = self.build_net(config.net_fake_score) if config.net_fake_score else None
             if config.net_fake_score:
                 assert config.loss_scale_dmd > 0
+
             if config.teacher_ckpt:
                 # load teacher checkpoint
                 self.load_ckpt_to_net(self.net_teacher, config.teacher_ckpt)
-                self.net.load_state_dict(self.net_teacher.state_dict(), strict=False)
+            if config.teacher_ckpt_2 and self.net_teacher_2 is not None:
+                # load secondary teacher checkpoint, used for low-noise expert routing
+                self.load_ckpt_to_net(self.net_teacher_2, config.teacher_ckpt_2)
+
+            if config.teacher_ckpt or config.teacher_ckpt_2:
+                teacher_for_init = self.net_teacher if config.teacher_ckpt else self.net_teacher_2
+                self.net.load_state_dict(teacher_for_init.state_dict(), strict=False)
                 if self.net_fake_score:
-                    self.net_fake_score.load_state_dict(self.net_teacher.state_dict())
+                    self.net_fake_score.load_state_dict(teacher_for_init.state_dict(), strict=False)
             self.net_teacher.requires_grad_(False)
+            if self.net_teacher_2 is not None:
+                self.net_teacher_2.requires_grad_(False)
             self._param_count = count_params(self.net, verbose=False)
 
             # Enable/disable CP once; all CP comm/split/gather happens inside net.forward now.
@@ -243,11 +304,15 @@ class T2VDistillModel_rCM(ImaginaireModel):
             if cp_group is not None and cp_group.size() > 1:
                 self.net.enable_context_parallel(cp_group)
                 self.net_teacher.enable_context_parallel(cp_group)
+                if self.net_teacher_2 is not None:
+                    self.net_teacher_2.enable_context_parallel(cp_group)
                 if self.net_fake_score:
                     self.net_fake_score.enable_context_parallel(cp_group)
             else:
                 self.net.disable_context_parallel()
                 self.net_teacher.disable_context_parallel()
+                if self.net_teacher_2 is not None:
+                    self.net_teacher_2.disable_context_parallel()
                 if self.net_fake_score:
                     self.net_fake_score.disable_context_parallel()
 
@@ -319,6 +384,8 @@ class T2VDistillModel_rCM(ImaginaireModel):
         self.net = self.net.to(memory_format=memory_format, **self.tensor_kwargs)
         if self.net_teacher:
             self.net_teacher = self.net_teacher.to(memory_format=memory_format, **self.tensor_kwargs)
+        if getattr(self, "net_teacher_2", None) is not None:
+            self.net_teacher_2 = self.net_teacher_2.to(memory_format=memory_format, **self.tensor_kwargs)
         if self.net_fake_score:
             self.net_fake_score = self.net_fake_score.to(memory_format=memory_format, **self.tensor_kwargs)
 
@@ -361,6 +428,73 @@ class T2VDistillModel_rCM(ImaginaireModel):
     def draw_training_time_D(self, time_shape: Any) -> torch.Tensor:
         return rf_to_trig_time(self._sample_rf_time(self.p_D, time_shape))
 
+    def _slice_condition(self, condition: TextCondition, mask: torch.Tensor) -> TextCondition:
+        kwargs = condition.to_dict(skip_underscore=False)
+        for key, value in kwargs.items():
+            if isinstance(value, torch.Tensor) and value.ndim > 0 and value.shape[0] == mask.shape[0]:
+                kwargs[key] = value[mask]
+        return type(condition)(**kwargs)
+
+    def _teacher_2_mask(self, c_noise_B_1_T_1_1: torch.Tensor) -> Optional[torch.Tensor]:
+        if getattr(self, "net_teacher_2", None) is None:
+            return None
+        threshold = self.config.teacher_boundary_ratio * self.config.rectified_flow_t_scaling_factor
+        noise_B_T = c_noise_B_1_T_1_1.squeeze(dim=[1, 3, 4]).float()
+        if noise_B_T.ndim == 2:
+            noise_B = noise_B_T.mean(dim=1)
+        else:
+            noise_B = noise_B_T
+        return noise_B <= threshold
+
+    def _forward_net(
+        self,
+        net: torch.nn.Module,
+        x_B_C_T_H_W: torch.Tensor,
+        timesteps_B_T: torch.Tensor,
+        condition: TextCondition,
+    ) -> torch.Tensor:
+        return net(
+            x_B_C_T_H_W=x_B_C_T_H_W,
+            timesteps_B_T=timesteps_B_T,
+            **condition.to_dict(),
+        ).float()
+
+    def _forward_teacher_dual(
+        self,
+        x_B_C_T_H_W: torch.Tensor,
+        timesteps_B_T: torch.Tensor,
+        c_noise_B_1_T_1_1: torch.Tensor,
+        condition: TextCondition,
+    ) -> torch.Tensor:
+        mask_teacher_2 = self._teacher_2_mask(c_noise_B_1_T_1_1)
+        if mask_teacher_2 is None:
+            return self._forward_net(self.net_teacher, x_B_C_T_H_W, timesteps_B_T, condition)
+
+        if bool(mask_teacher_2.all()):
+            return self._forward_net(self.net_teacher_2, x_B_C_T_H_W, timesteps_B_T, condition)
+        if bool((~mask_teacher_2).all()):
+            return self._forward_net(self.net_teacher, x_B_C_T_H_W, timesteps_B_T, condition)
+
+        out = torch.empty_like(x_B_C_T_H_W, dtype=torch.float32)
+        mask_teacher_1 = ~mask_teacher_2
+        if bool(mask_teacher_1.any()):
+            cond_teacher_1 = self._slice_condition(condition, mask_teacher_1)
+            out[mask_teacher_1] = self._forward_net(
+                self.net_teacher,
+                x_B_C_T_H_W[mask_teacher_1],
+                timesteps_B_T[mask_teacher_1],
+                cond_teacher_1,
+            )
+        if bool(mask_teacher_2.any()):
+            cond_teacher_2 = self._slice_condition(condition, mask_teacher_2)
+            out[mask_teacher_2] = self._forward_net(
+                self.net_teacher_2,
+                x_B_C_T_H_W[mask_teacher_2],
+                timesteps_B_T[mask_teacher_2],
+                cond_teacher_2,
+            )
+        return out
+
     def denoise(
         self,
         xt_B_C_T_H_W: torch.Tensor,
@@ -397,13 +531,24 @@ class T2VDistillModel_rCM(ImaginaireModel):
         # convert noise level time to EDM-formulation coefficients
         c_skip_B_1_T_1_1, c_out_B_1_T_1_1, c_in_B_1_T_1_1, c_noise_B_1_T_1_1 = self.scaling(trigflow_t=time_B_1_T_1_1)
 
-        net = {"student": self.net, "teacher": self.net_teacher, "fake_score": self.net_fake_score}[net_type]
+        x_input_B_C_T_H_W = (xt_B_C_T_H_W * c_in_B_1_T_1_1).to(**self.tensor_kwargs)
+        noise_input_B_T = c_noise_B_1_T_1_1.squeeze(dim=[1, 3, 4]).to(**self.tensor_kwargs)
 
-        net_output_B_C_T_H_W = net(
-            x_B_C_T_H_W=(xt_B_C_T_H_W * c_in_B_1_T_1_1).to(**self.tensor_kwargs),
-            timesteps_B_T=c_noise_B_1_T_1_1.squeeze(dim=[1, 3, 4]).to(**self.tensor_kwargs),
-            **condition.to_dict(),
-        ).float()
+        if net_type == "teacher":
+            net_output_B_C_T_H_W = self._forward_teacher_dual(
+                x_B_C_T_H_W=x_input_B_C_T_H_W,
+                timesteps_B_T=noise_input_B_T,
+                c_noise_B_1_T_1_1=c_noise_B_1_T_1_1,
+                condition=condition,
+            )
+        else:
+            net = {"student": self.net, "fake_score": self.net_fake_score}[net_type]
+            net_output_B_C_T_H_W = self._forward_net(
+                net=net,
+                x_B_C_T_H_W=x_input_B_C_T_H_W,
+                timesteps_B_T=noise_input_B_T,
+                condition=condition,
+            )
 
         # EDM reconstruction of x0
         x0_pred_B_C_T_H_W = c_skip_B_1_T_1_1 * xt_B_C_T_H_W + c_out_B_1_T_1_1 * net_output_B_C_T_H_W
@@ -890,7 +1035,33 @@ class T2VDistillModel_rCM(ImaginaireModel):
         assert latents.shape[2] >= self.config.state_t
         data_batch[self.config.input_latent_key] = latents[:, :, : self.config.state_t, :, :]
 
+    def _prepare_text_embeddings_inplace(self, data_batch: dict[str, Any]) -> None:
+        if isinstance(data_batch.get("t5_text_embeddings"), torch.Tensor):
+            return
+
+        prompts = data_batch.get(self.config.input_caption_key)
+        if prompts is None:
+            raise KeyError(
+                f"Missing both 't5_text_embeddings' and '{self.config.input_caption_key}' in data batch. "
+                "OpenS2V raw-video mode requires prompts to compute text embeddings online."
+            )
+
+        if isinstance(prompts, str):
+            prompts_list = [prompts]
+        elif isinstance(prompts, (list, tuple)):
+            prompts_list = [str(p) for p in prompts]
+        else:
+            prompts_list = [str(p) for p in list(prompts)]
+
+        data_batch["t5_text_embeddings"] = get_umt5_embedding(
+            checkpoint_path=self.config.text_encoder_path,
+            prompts=prompts_list,
+            device="cuda",
+        ).to(dtype=self.precision)
+
     def get_data_and_condition(self, data_batch: dict[str, torch.Tensor]) -> Tuple[Tensor, TextCondition]:
+        self._prepare_text_embeddings_inplace(data_batch)
+
         if IS_PROCESSED_KEY not in data_batch or not data_batch[IS_PROCESSED_KEY]:
             if self.config.input_latent_key in data_batch:
                 self._normalize_latent_inplace(data_batch)

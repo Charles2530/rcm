@@ -18,8 +18,10 @@ from hydra.core.config_store import ConfigStore
 from imaginaire.lazy_config import LazyCall as L
 from imaginaire.lazy_config import LazyDict
 
-from rcm.networks.wan2pt1 import WanModel
-from rcm.networks.wan2pt1_jvp import WanModel_JVP
+from rcm.networks.wan2pt1 import WanModel as Wan2pt1Model
+from rcm.networks.wan2pt1_jvp import WanModel_JVP as Wan2pt1Model_JVP
+from rcm.networks.wan2pt2 import WanModel as Wan2pt2Model
+from rcm.networks.wan2pt2_t2v_jvp import WanModel_T2V_JVP as Wan2pt2Model_T2V_JVP
 
 wan2pt1_1pt3B_net_args = dict(
     dim=1536,
@@ -45,13 +47,30 @@ wan2pt1_14B_net_args = dict(
     text_len=512,
 )
 
-WAN2PT1_1PT3B_T2V: LazyDict = L(WanModel)(**wan2pt1_1pt3B_net_args, model_type="t2v")
+wan2pt2_A14B_t2v_net_args = dict(
+    dim=5120,
+    eps=1e-06,
+    ffn_dim=13824,
+    freq_dim=256,
+    in_dim=16,
+    num_heads=40,
+    num_layers=40,
+    out_dim=16,
+    text_len=512,
+    cross_attn_norm=True,
+)
 
-WAN2PT1_14B_T2V: LazyDict = L(WanModel)(**wan2pt1_14B_net_args, model_type="t2v")
+WAN2PT1_1PT3B_T2V: LazyDict = L(Wan2pt1Model)(**wan2pt1_1pt3B_net_args, model_type="t2v")
 
-WAN2PT1_1PT3B_T2V_JVP: LazyDict = L(WanModel_JVP)(**wan2pt1_1pt3B_net_args, model_type="t2v")
+WAN2PT1_14B_T2V: LazyDict = L(Wan2pt1Model)(**wan2pt1_14B_net_args, model_type="t2v")
 
-WAN2PT1_14B_T2V_JVP: LazyDict = L(WanModel_JVP)(**wan2pt1_14B_net_args, model_type="t2v")
+WAN2PT1_1PT3B_T2V_JVP: LazyDict = L(Wan2pt1Model_JVP)(**wan2pt1_1pt3B_net_args, model_type="t2v")
+
+WAN2PT1_14B_T2V_JVP: LazyDict = L(Wan2pt1Model_JVP)(**wan2pt1_14B_net_args, model_type="t2v")
+
+WAN2PT2_A14B_T2V: LazyDict = L(Wan2pt2Model)(**wan2pt2_A14B_t2v_net_args, model_type="t2v")
+
+WAN2PT2_A14B_T2V_JVP: LazyDict = L(Wan2pt2Model_T2V_JVP)(**wan2pt2_A14B_t2v_net_args, model_type="t2v")
 
 
 def register_net():
@@ -60,15 +79,19 @@ def register_net():
     cs.store(group="net", package="model.config.net", name="wan2pt1_14B_t2v", node=WAN2PT1_14B_T2V)
     cs.store(group="net", package="model.config.net", name="wan2pt1_1pt3B_t2v_jvp", node=WAN2PT1_1PT3B_T2V_JVP)
     cs.store(group="net", package="model.config.net", name="wan2pt1_14B_t2v_jvp", node=WAN2PT1_14B_T2V_JVP)
+    cs.store(group="net", package="model.config.net", name="wan2pt2_a14b_t2v", node=WAN2PT2_A14B_T2V)
+    cs.store(group="net", package="model.config.net", name="wan2pt2_a14b_t2v_jvp", node=WAN2PT2_A14B_T2V_JVP)
 
 
 def register_net_fake_score():
     cs = ConfigStore.instance()
     cs.store(group="net_fake_score", package="model.config.net_fake_score", name="wan2pt1_1pt3B_t2v", node=WAN2PT1_1PT3B_T2V)
     cs.store(group="net_fake_score", package="model.config.net_fake_score", name="wan2pt1_14B_t2v", node=WAN2PT1_14B_T2V)
+    cs.store(group="net_fake_score", package="model.config.net_fake_score", name="wan2pt2_a14b_t2v", node=WAN2PT2_A14B_T2V)
 
 
 def register_net_teacher():
     cs = ConfigStore.instance()
     cs.store(group="net_teacher", package="model.config.net_teacher", name="wan2pt1_1pt3B_t2v", node=WAN2PT1_1PT3B_T2V)
     cs.store(group="net_teacher", package="model.config.net_teacher", name="wan2pt1_14B_t2v", node=WAN2PT1_14B_T2V)
+    cs.store(group="net_teacher", package="model.config.net_teacher", name="wan2pt2_a14b_t2v", node=WAN2PT2_A14B_T2V)

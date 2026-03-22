@@ -102,7 +102,49 @@ Our training code also support:
 #### Key Components
 - FlashAttention-2 JVP kernel: `rcm/utils/flash_attention_jvp_triton.py`
 - JVP-adapted Wan2.1 student network: `rcm/networks/wan2pt1_jvp.py`
+- Wan2.2 T2V JVP student entry: `rcm/networks/wan2pt2_t2v_jvp.py`
 - Training loop: `rcm/models/t2v_model_distill_rcm.py`
+
+#### Wan2.2 T2V A14B Prototype (Diffusers -> rCM)
+This repo now includes a research-prototype adaptation path for `Wan-AI/Wan2.2-T2V-A14B-Diffusers`:
+
+1) Convert Diffusers transformer experts (`transformer`, `transformer_2`) to rCM key format:
+```bash
+PYTHONPATH=. python scripts/convert_wan22_diffusers_to_rcm.py \
+    --model_root ./model/Wan-AI/Wan2.2-T2V-A14B-Diffusers \
+    --output_dir ./model/Wan-AI/Wan2.2-T2V-A14B-Diffusers-rcm
+```
+
+2) Start with pure sCM distillation config:
+```bash
+torchrun --nproc_per_node=8 \
+    -m scripts.train --config=rcm/configs/registry_distill.py -- \
+    experiment=wan2pt2_a14b_res480p_t2v_scm \
+    dataloader_train.tar_path_pattern=./datasets/shard*.tar
+```
+
+3) For joint rCM+DMD, switch to:
+```bash
+experiment=wan2pt2_a14b_res480p_t2v_rcm
+```
+
+#### OpenS2V-5M Raw Video Training
+`OpenS2V-5M` provides metadata in `Jsons/total_part*.json` with fields such as:
+- `metadata.path` (relative video path)
+- `metadata.cap` (caption list)
+- `metadata.crop` and `metadata.face_cut` (recommended crop/cut ranges)
+
+This repo now includes an OpenS2V dataloader (`data_train=opens2v`) that reads raw videos from:
+- `.../Jsons/total_part*.json`
+- `.../Videos`
+
+and computes `t5_text_embeddings` online from `prompts` when missing.
+If your `Videos` are still `*.tar.split*`, first recover and extract them (as described in the OpenS2V dataset card).
+
+For 8-GPU training, use:
+```bash
+bash scripts/train_wan22_opens2v_8xh800.sh
+```
 
 #### Checkpoints Downloading
 Download the Wan2.1 teacher checkpoints in `.pth` format and VAE/text encoder to `assets/checkpoints`:

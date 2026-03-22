@@ -18,6 +18,7 @@ from hydra.core.config_store import ConfigStore
 
 from imaginaire.lazy_config import LazyCall as L
 from rcm.datasets.webdataset import create_dataloader
+from rcm.datasets.opens2v import create_opens2v_dataloader
 
 
 DUMMY_DATALOADER = L(torch.utils.data.DataLoader)(dataset=lambda: torch.utils.data.TensorDataset(torch.empty(0, 1), torch.empty(0)))
@@ -30,9 +31,29 @@ WEBDATASET_LOADER = L(create_dataloader)(
     prefetch_factor=2,
 )
 
+OPENS2V_LOADER = L(create_opens2v_dataloader)(
+    index_json_pattern="/path/to/OpenS2V-5M/Jsons/total_part*.json",
+    videos_root="/path/to/OpenS2V-5M/Videos",
+    batch_size=1,
+    target_resolution="480p",
+    target_aspect_ratio="16:9",
+    max_frames=81,
+    decoder="torchvision",
+    use_face_cut=True,
+    use_crop=True,
+    num_workers=1,
+    prefetch_factor=2,
+    persistent_workers=True,
+    max_entries_per_json=-1,
+    skip_broken_samples=True,
+    shuffle_json_files=True,
+    seed=0,
+)
+
 
 def register_dataloader():
     cs = ConfigStore()
     cs.store(group="data_train", package="dataloader_train", name="dummy", node=DUMMY_DATALOADER)
     cs.store(group="data_train", package="dataloader_train", name="webdataset", node=WEBDATASET_LOADER)
+    cs.store(group="data_train", package="dataloader_train", name="opens2v", node=OPENS2V_LOADER)
     cs.store(group="data_val", package="dataloader_val", name="dummy", node=DUMMY_DATALOADER)
