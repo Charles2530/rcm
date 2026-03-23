@@ -76,10 +76,17 @@ def _map_hf_key_to_rcm(hf_key: str) -> Optional[str]:
     if hf_key.startswith("blocks."):
         # Example: blocks.0.attn1.to_q.weight
         parts = hf_key.split(".")
-        if len(parts) < 4:
+        if len(parts) < 3:
             return None
         block_id = parts[1]
         suffix = ".".join(parts[2:])
+
+        # Some keys (e.g. blocks.0.scale_shift_table) have only 3 segments.
+        if suffix == "scale_shift_table":
+            return f"blocks.{block_id}.modulation"
+
+        if len(parts) < 4:
+            return None
 
         if suffix.startswith("attn1."):
             mapped = _map_attention_key(block_id, suffix[len("attn1.") :], "self_attn")
@@ -96,8 +103,6 @@ def _map_hf_key_to_rcm(hf_key: str) -> Optional[str]:
             return f"blocks.{block_id}.ffn.2.{suffix[len('ffn.net.2.') :]}"
         if suffix.startswith("norm2."):
             return f"blocks.{block_id}.norm3.{suffix[len('norm2.') :]}"
-        if suffix == "scale_shift_table":
-            return f"blocks.{block_id}.modulation"
 
         return None
 
@@ -130,6 +135,9 @@ def _convert_transformer_state_dict(hf_state_dict: Mapping[str, torch.Tensor]) -
         if mapped_key is None:
             unmapped.append(key)
             continue
+        if mapped_key == "patch_embedding.weight" and isinstance(value, torch.Tensor) and value.ndim > 2:
+            # Diffusers stores Conv3D kernel as [D_out, D_in, kt, kh, kw], rCM expects Linear weight [D_out, D_in * kt * kh * kw].
+            value = value.flatten(1)
         if mapped_key.endswith(".modulation") and isinstance(value, torch.Tensor) and value.ndim == 2:
             # Diffusers stores modulation as [N, D], rCM expects [1, N, D].
             value = value.unsqueeze(0)
