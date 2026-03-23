@@ -114,6 +114,7 @@ PYTHONPATH=. python scripts/convert_wan22_diffusers_to_rcm.py \
     --model_root ./model/Wan2.2-T2V-A14B-Diffusers \
     --output_dir ./model/Wan2.2-T2V-A14B-Diffusers-rcm
 ```
+This conversion script outputs `.pth` teacher checkpoints (`net.*` keys), and the training loader can consume them directly (no mandatory `.dcp` conversion for Wan2.2).
 
 2) Start with pure sCM distillation config:
 ```bash
@@ -154,11 +155,16 @@ Download the Wan2.1 teacher checkpoints in `.pth` format and VAE/text encoder to
 git clone https://huggingface.co/worstcoder/Wan model/Wan2.1-T2V-distill
 ```
 
-Our code is based on FSDP2 and relies on [Distributed Checkpoint (DCP)](https://docs.pytorch.org/tutorials/recipes/distributed_checkpoint_recipe.html) for loading and saving checkpoints. Before training, convert `.pth` teacher checkpoints to `.dcp` first:
+Our training checkpoint save/resume path is based on [Distributed Checkpoint (DCP)](https://docs.pytorch.org/tutorials/recipes/distributed_checkpoint_recipe.html).
+For teacher model loading, the code supports both regular checkpoints (`.pth` / `.safetensors`) and DCP directories.
+
+For Wan2.1 teacher checkpoints in this README example, convert `.pth` to `.dcp` first:
 
 ```bash
 python -m torch.distributed.checkpoint.format_utils torch_to_dcp model/Wan2.1-T2V-distill/Wan2.1-T2V-1.3B.pth model/Wan2.1-T2V-distill/Wan2.1-T2V-1.3B.dcp
 ```
+
+For Wan2.2 prototype training, the converted experts from `scripts/convert_wan22_diffusers_to_rcm.py` are already `.pth` and can be used directly as `model.config.teacher_ckpt` / `model.config.teacher_ckpt_2`.
 
 After training, the saved `.dcp` checkpoints can be converted to `.pth` using the script `scripts/dcp_to_pth.py`.
 
