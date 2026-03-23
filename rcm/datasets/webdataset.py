@@ -1,6 +1,7 @@
 import glob
-import webdataset as wds
 import torch
+import torch.distributed as dist
+import webdataset as wds
 from torch.utils.data import DataLoader
 
 
@@ -29,15 +30,21 @@ def create_dataloader(
     shuffle_buffer=1000,
     prefetch_factor=2,
 ):
-    shards = glob.glob(tar_path_pattern)
+    shards = sorted(glob.glob(tar_path_pattern))
     if not shards:
         raise FileNotFoundError(f"No files found with pattern '{tar_path_pattern}'")
+    if dist.is_available() and dist.is_initialized():
+        rank = dist.get_rank()
+        world_size = dist.get_world_size()
+        shards = shards[rank::world_size]
+        if not shards:
+            raise RuntimeError(
+                f"Rank {rank} got no shards from pattern '{tar_path_pattern}'. "
+                f"Total shards must be >= world_size ({world_size})."
+            )
 
     dataset = wds.DataPipeline(
         wds.SimpleShardList(shards),
-        # this shuffles the shards
-        wds.shuffle(1000),
-        wds.split_by_node,
         wds.split_by_worker,
         wds.tarfile_to_samples(),
         # this shuffles the samples in memory

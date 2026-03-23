@@ -178,14 +178,27 @@ class ImaginaireTrainer:
             while True:
                 dataloader_train_iter = iter(dataloader_train)
                 while True:
+                    has_local_batch = True
                     self.callbacks.on_before_dataloading(iteration)
                     try:
                         with self.training_timer("dataloader_train"):
                             data_batch = next(dataloader_train_iter)
                     except StopIteration:
-                        break
+                        has_local_batch = False
+                        data_batch = None
                     finally:
                         self.callbacks.on_after_dataloading(iteration)
+                    # Keep all ranks in sync for iterable-style dataloaders.
+                    # If any rank runs out of batches, everyone must stop this dataloader round.
+                    if dist.is_available() and dist.is_initialized():
+                        flag_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                        has_batch_tensor = torch.tensor(int(has_local_batch), device=flag_device, dtype=torch.int32)
+                        dist.all_reduce(has_batch_tensor, op=dist.ReduceOp.MIN)
+                        if has_batch_tensor.item() == 0:
+                            break
+                    elif not has_local_batch:
+                        break
+                    assert data_batch is not None
                     # If max_iter is reached, exit the training loop.
                     if iteration >= self.config.trainer.max_iter:
                         _end_training = True
