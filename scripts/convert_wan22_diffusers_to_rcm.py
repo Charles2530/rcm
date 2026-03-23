@@ -235,13 +235,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model_root",
         type=str,
-        default="./model/Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+        default="./model/Wan2.2-T2V-A14B-Diffusers",
         help="Path to local diffusers model root.",
     )
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="./model/Wan-AI/Wan2.2-T2V-A14B-Diffusers-rcm",
+        default="./model/Wan2.2-T2V-A14B-Diffusers-rcm",
         help="Output directory for converted checkpoints.",
     )
     parser.add_argument(

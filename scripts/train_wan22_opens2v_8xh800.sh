@@ -5,8 +5,8 @@ set -euo pipefail
 #   bash scripts/train_wan22_opens2v_8xh800.sh
 # Optional env overrides:
 #   STAGE=scm|rcm
-#   WAN22_DIFFUSERS_ROOT=./model/Wan-AI/Wan2.2-T2V-A14B-Diffusers
-#   WAN22_RCM_ROOT=./model/Wan-AI/Wan2.2-T2V-A14B-Diffusers-rcm
+#   WAN22_DIFFUSERS_ROOT=./model/Wan2.2-T2V-A14B-Diffusers
+#   WAN22_RCM_ROOT=./model/Wan2.2-T2V-A14B-Diffusers-rcm
 #   OPENS2V_ROOT=./datasets/OpenS2V-5M
 #   VAE_PATH=./model/Wan2.1_VAE.pth
 #   T5_PATH=./model/models_t5_umt5-xxl-enc-bf16.pth
@@ -28,13 +28,13 @@ export PYTHONPATH="${WORKDIR}"
 export IMAGINAIRE_OUTPUT_ROOT="${IMAGINAIRE_OUTPUT_ROOT:-${WORKDIR}/outputs}"
 
 STAGE="${STAGE:-scm}"
-WAN22_DIFFUSERS_ROOT="${WAN22_DIFFUSERS_ROOT:-./model/Wan-AI/Wan2.2-T2V-A14B-Diffusers}"
-WAN22_RCM_ROOT="${WAN22_RCM_ROOT:-./model/Wan-AI/Wan2.2-T2V-A14B-Diffusers-rcm}"
+WAN22_DIFFUSERS_ROOT="${WAN22_DIFFUSERS_ROOT:-./model/Wan2.2-T2V-A14B-Diffusers}"
+WAN22_RCM_ROOT="${WAN22_RCM_ROOT:-./model/Wan2.2-T2V-A14B-Diffusers-rcm}"
 OPENS2V_ROOT="${OPENS2V_ROOT:-./datasets/OpenS2V-5M}"
 
-VAE_PATH="${VAE_PATH:-./model/Wan2.1_VAE.pth}"
-T5_PATH="${T5_PATH:-./model/models_t5_umt5-xxl-enc-bf16.pth}"
-NEG_EMB_PATH="${NEG_EMB_PATH:-./model/umT5_wan_negative_emb.pt}"
+VAE_PATH="${VAE_PATH:-./model/Wan2.2-T2V-A14B/Wan2.1_VAE.pth}"
+T5_PATH="${T5_PATH:-./model/Wan2.2-T2V-A14B/models_t5_umt5-xxl-enc-bf16.pth}"
+NEG_EMB_PATH="${NEG_EMB_PATH:-./model/Wan2.2-T2V-A14B/umT5_wan_negative_emb.pt}"
 
 NPROC_PER_NODE="${NPROC_PER_NODE:-8}"
 MASTER_PORT="${MASTER_PORT:-29666}"

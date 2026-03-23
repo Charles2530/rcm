@@ -111,8 +111,8 @@ This repo now includes a research-prototype adaptation path for `Wan-AI/Wan2.2-T
 1) Convert Diffusers transformer experts (`transformer`, `transformer_2`) to rCM key format:
 ```bash
 PYTHONPATH=. python scripts/convert_wan22_diffusers_to_rcm.py \
-    --model_root ./model/Wan-AI/Wan2.2-T2V-A14B-Diffusers \
-    --output_dir ./model/Wan-AI/Wan2.2-T2V-A14B-Diffusers-rcm
+    --model_root ./model/Wan2.2-T2V-A14B-Diffusers \
+    --output_dir ./model/Wan2.2-T2V-A14B-Diffusers-rcm
 ```
 
 2) Start with pure sCM distillation config:
