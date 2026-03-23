@@ -72,8 +72,8 @@ Below is an example inference script for running rCM on T2V:
 # --num_steps          Sampling steps, 1–4 (default: 4)
 # --sigma_max          Initial sigma for rCM (default: 80); larger choices (e.g., 1600) reduce diversity but may enhance quality
 # --dit_path           Path to the distilled DiT model checkpoint (REQUIRED for inference)
-# --vae_path           Path to Wan2.1 VAE (default: assets/checkpoints/Wan2.1_VAE.pth)
-# --text_encoder_path  Path to umT5 text encoder (default: assets/checkpoints/models_t5_umt5-xxl-enc-bf16.pth)
+# --vae_path           Path to Wan2.1 VAE (default: model/Wan2.1-T2V-distill/Wan2.1_VAE.pth)
+# --text_encoder_path  Path to umT5 text encoder (default: model/Wan2.1-T2V-distill/models_t5_umt5-xxl-enc-bf16.pth)
 # --prompt             Text prompt for video generation (default: A stylish woman walks down a Tokyo street...)
 # --resolution         Output resolution, e.g. "480p", "720p" (default: 480p)
 # --aspect_ratio       Aspect ratio in W:H format (default: 16:9)
@@ -83,7 +83,7 @@ Below is an example inference script for running rCM on T2V:
 
 # Example
 PYTHONPATH=.  python rcm/inference/wan2pt1_t2v_rcm_infer.py \
-    --dit_path assets/checkpoints/rCM_Wan2.1_T2V_1.3B_480p.pt \
+    --dit_path model/Wan2.1-T2V-distill/rCM_Wan2.1_T2V_1.3B_480p.pt \
     --num_samples 5 \
     --prompt "A cinematic shot of a snowy mountain at sunrise"
 ```
@@ -147,17 +147,17 @@ bash scripts/train_wan22_opens2v_8xh800.sh
 ```
 
 #### Checkpoints Downloading
-Download the Wan2.1 teacher checkpoints in `.pth` format and VAE/text encoder to `assets/checkpoints`:
+Download the Wan2.1 teacher checkpoints in `.pth` format and VAE/text encoder to `model/Wan2.1-T2V-distill`:
 
 ```bash
 # make sure git lfs is installed
-git clone https://huggingface.co/worstcoder/Wan assets/checkpoints
+git clone https://huggingface.co/worstcoder/Wan model/Wan2.1-T2V-distill
 ```
 
 Our code is based on FSDP2 and relies on [Distributed Checkpoint (DCP)](https://docs.pytorch.org/tutorials/recipes/distributed_checkpoint_recipe.html) for loading and saving checkpoints. Before training, convert `.pth` teacher checkpoints to `.dcp` first:
 
 ```bash
-python -m torch.distributed.checkpoint.format_utils torch_to_dcp assets/checkpoints/Wan2.1-T2V-1.3B.pth assets/checkpoints/Wan2.1-T2V-1.3B.dcp
+python -m torch.distributed.checkpoint.format_utils torch_to_dcp model/Wan2.1-T2V-distill/Wan2.1-T2V-1.3B.pth model/Wan2.1-T2V-distill/Wan2.1-T2V-1.3B.dcp
 ```
 
 After training, the saved `.dcp` checkpoints can be converted to `.pth` using the script `scripts/dcp_to_pth.py`.
@@ -181,7 +181,7 @@ export PYTHONPATH=.
 
 # the "IMAGINAIRE_OUTPUT_ROOT" environment variable is the path to save experiment output files
 export IMAGINAIRE_OUTPUT_ROOT=${WORKDIR}/outputs
-CHECKPOINT_ROOT=${WORKDIR}/assets/checkpoints
+CHECKPOINT_ROOT=${WORKDIR}/model/Wan2.1-T2V-distill
 DATASET_ROOT=${WORKDIR}/assets/datasets/Wan2.1_14B_480p_16:9_Euler-step100_shift-3.0_cfg-5.0_seed-0_250K
 
 # your Wandb information

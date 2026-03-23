@@ -56,10 +56,10 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="rCM inference script for Wan2.2 I2V with High/Low Noise models")
     parser.add_argument("--image_path", type=str, required=True, help="Path to the input image for I2V generation.")
     parser.add_argument(
-        "--high_noise_model_path", type=str, default="assets/checkpoints/Wan2.2-I2V-A14B-high-rCM-merged.pth", help="Path to the high-noise model."
+        "--high_noise_model_path", type=str, default="model/Wan2.1-T2V-distill/Wan2.2-I2V-A14B-high-rCM-merged.pth", help="Path to the high-noise model."
     )
     parser.add_argument(
-        "--low_noise_model_path", type=str, default="assets/checkpoints/Wan2.2-I2V-A14B-low-rCM-merged.pth", help="Path to the low-noise model."
+        "--low_noise_model_path", type=str, default="model/Wan2.1-T2V-distill/Wan2.2-I2V-A14B-low-rCM-merged.pth", help="Path to the low-noise model."
     )
     parser.add_argument("--boundary", type=float, default=0.9, help="Timestep boundary for switching from high to low noise model.")
 
@@ -67,9 +67,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--num_samples", type=int, default=1, help="Number of samples to generate")
     parser.add_argument("--num_steps", type=int, choices=[1, 2, 3, 4], default=4, help="1~4 for timestep-distilled inference")
     parser.add_argument("--sigma_max", type=float, default=200, help="Initial sigma for rCM")
-    parser.add_argument("--vae_path", type=str, default="assets/checkpoints/Wan2.1_VAE.pth", help="Path to the Wan2.1 VAE.")
+    parser.add_argument("--vae_path", type=str, default="model/Wan2.1-T2V-distill/Wan2.1_VAE.pth", help="Path to the Wan2.1 VAE.")
     parser.add_argument(
-        "--text_encoder_path", type=str, default="assets/checkpoints/models_t5_umt5-xxl-enc-bf16.pth", help="Path to the umT5 text encoder."
+        "--text_encoder_path", type=str, default="model/Wan2.1-T2V-distill/models_t5_umt5-xxl-enc-bf16.pth", help="Path to the umT5 text encoder."
     )
     parser.add_argument("--num_frames", type=int, default=81, help="Number of frames to generate")
     parser.add_argument("--prompt", type=str, required=True, help="Text prompt for video generation")

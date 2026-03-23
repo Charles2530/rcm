@@ -72,9 +72,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--num_steps", type=int, choices=[1, 2, 3, 4], default=4, help="1~4 for timestep-distilled inference")
     parser.add_argument("--sigma_max", type=float, default=80, help="Initial sigma for rCM")
     parser.add_argument("--dit_path", type=str, default="", help="Custom path to the DiT model checkpoint for distilled models.")
-    parser.add_argument("--vae_path", type=str, default="assets/checkpoints/Wan2.1_VAE.pth", help="Path to the Wan2.1 VAE.")
+    parser.add_argument("--vae_path", type=str, default="model/Wan2.1-T2V-distill/Wan2.1_VAE.pth", help="Path to the Wan2.1 VAE.")
     parser.add_argument(
-        "--text_encoder_path", type=str, default="assets/checkpoints/models_t5_umt5-xxl-enc-bf16.pth", help="Path to the umT5 text encoder."
+        "--text_encoder_path", type=str, default="model/Wan2.1-T2V-distill/models_t5_umt5-xxl-enc-bf16.pth", help="Path to the umT5 text encoder."
     )
     parser.add_argument("--num_frames", type=int, default=77, help="Number of frames to generate")
     parser.add_argument("--prompt", type=str, default=_DEFAULT_PROMPT, help="Text prompt for video generation")

@@ -95,7 +95,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--tar_path", type=str, required=True, help="Path to the input .tar file containing latent samples.")
     parser.add_argument("--save_path", type=str, default="preview.mp4", help="Path to save the output video file.")
-    parser.add_argument("--vae_path", type=str, default="assets/checkpoints/Wan2.1_VAE.pth", help="Path to the Wan2.1 VAE model weights.")
+    parser.add_argument("--vae_path", type=str, default="model/Wan2.1-T2V-distill/Wan2.1_VAE.pth", help="Path to the Wan2.1 VAE model weights.")
     parser.add_argument("--num_samples", type=int, default=16, help="Number of samples to decode from the tar file. Set to 0 to decode all.")
     parser.add_argument("--grid_cols", type=int, default=4, help="Number of columns in the output video grid.")
     parser.add_argument("--fps", type=int, default=16, help="Frames per second for the output video.")

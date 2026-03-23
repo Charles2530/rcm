@@ -272,10 +272,10 @@ if __name__ == "__main__":
     parser.add_argument("--sampler", choices=["Euler", "UniPC"], default="Euler", help="Sampler")
     parser.add_argument("--guidance_scale", type=float, default=5.0, help="CFG scale")
     parser.add_argument("--timestep_shift", type=float, default=3.0, help="Timestep shift as in Wan")
-    parser.add_argument("--dit_path", type=str, default="assets/checkpoints/Wan2.1-T2V-14B.pth", help="Path to the video diffusion model.")
-    parser.add_argument("--vae_path", type=str, default="assets/checkpoints/Wan2.1_VAE.pth", help="Path to the Wan2.1 VAE.")
+    parser.add_argument("--dit_path", type=str, default="model/Wan2.1-T2V-distill/Wan2.1-T2V-14B.pth", help="Path to the video diffusion model.")
+    parser.add_argument("--vae_path", type=str, default="model/Wan2.1-T2V-distill/Wan2.1_VAE.pth", help="Path to the Wan2.1 VAE.")
     parser.add_argument(
-        "--text_encoder_path", type=str, default="assets/checkpoints/models_t5_umt5-xxl-enc-bf16.pth", help="Path to the umT5 text encoder."
+        "--text_encoder_path", type=str, default="model/Wan2.1-T2V-distill/models_t5_umt5-xxl-enc-bf16.pth", help="Path to the umT5 text encoder."
     )
     parser.add_argument("--num_frames", type=int, default=81, help="Number of frames to generate")
     parser.add_argument("--negative_prompt", type=str, default=_DEFAULT_NEGATIVE_PROMPT, help="Negative text prompt for video generation")
