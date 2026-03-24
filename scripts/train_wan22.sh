@@ -33,6 +33,17 @@ set -euo pipefail
 #   TEACHER_INIT_LOW_NOISE_WEIGHT_LATE=0.8
 #   TEACHER_INIT_LOW_NOISE_WEIGHT_HEAD=0.85
 #   TEACHER_BOUNDARY_RATIO=0.875
+#   WAN22_PREFLIGHT=true|false
+#   WAN22_PREFLIGHT_DTYPE=float32|float16|bfloat16
+#   WAN22_PREFLIGHT_PARITY=true|false
+#   WAN22_PREFLIGHT_PARITY_SEEDS=0,1
+#   WAN22_PREFLIGHT_PARITY_TIMESTEPS=0,500,999
+#   WAN22_PREFLIGHT_PARITY_LATENT_SHAPES=21x60x106
+#   WAN22_PREFLIGHT_ROUTING=true|false
+#   WAN22_PREFLIGHT_PIPELINE=true|false
+#   WAN22_PREFLIGHT_STUDENT_FWITHT=true|false
+#   WAN22_PREFLIGHT_STUDENT_PRESET=mini|small|medium
+#   WAN22_PREFLIGHT_REPORT_DIR=./outputs/wan22_preflight
 
 WORKDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${WORKDIR}"
@@ -69,6 +80,17 @@ TEACHER_INIT_LOW_NOISE_WEIGHT_EARLY="${TEACHER_INIT_LOW_NOISE_WEIGHT_EARLY:-0.4}
 TEACHER_INIT_LOW_NOISE_WEIGHT_LATE="${TEACHER_INIT_LOW_NOISE_WEIGHT_LATE:-0.8}"
 TEACHER_INIT_LOW_NOISE_WEIGHT_HEAD="${TEACHER_INIT_LOW_NOISE_WEIGHT_HEAD:-0.85}"
 TEACHER_BOUNDARY_RATIO="${TEACHER_BOUNDARY_RATIO:-0.875}"
+WAN22_PREFLIGHT="${WAN22_PREFLIGHT:-false}"
+WAN22_PREFLIGHT_DTYPE="${WAN22_PREFLIGHT_DTYPE:-float32}"
+WAN22_PREFLIGHT_PARITY="${WAN22_PREFLIGHT_PARITY:-false}"
+WAN22_PREFLIGHT_PARITY_SEEDS="${WAN22_PREFLIGHT_PARITY_SEEDS:-0,1}"
+WAN22_PREFLIGHT_PARITY_TIMESTEPS="${WAN22_PREFLIGHT_PARITY_TIMESTEPS:-0,500,999}"
+WAN22_PREFLIGHT_PARITY_LATENT_SHAPES="${WAN22_PREFLIGHT_PARITY_LATENT_SHAPES:-21x60x106}"
+WAN22_PREFLIGHT_ROUTING="${WAN22_PREFLIGHT_ROUTING:-false}"
+WAN22_PREFLIGHT_PIPELINE="${WAN22_PREFLIGHT_PIPELINE:-true}"
+WAN22_PREFLIGHT_STUDENT_FWITHT="${WAN22_PREFLIGHT_STUDENT_FWITHT:-true}"
+WAN22_PREFLIGHT_STUDENT_PRESET="${WAN22_PREFLIGHT_STUDENT_PRESET:-mini}"
+WAN22_PREFLIGHT_REPORT_DIR="${WAN22_PREFLIGHT_REPORT_DIR:-${IMAGINAIRE_OUTPUT_ROOT}/wan22_preflight}"
 
 TEACHER_CKPT_1="${WAN22_RCM_ROOT}/Wan2.2-T2V-A14B-transformer-rcm.pth"
 TEACHER_CKPT_2="${WAN22_RCM_ROOT}/Wan2.2-T2V-A14B-transformer_2-rcm.pth"
@@ -79,6 +101,53 @@ if [[ ! -f "${TEACHER_CKPT_1}" || ! -f "${TEACHER_CKPT_2}" ]]; then
     --model_root "${WAN22_DIFFUSERS_ROOT}" \
     --output_dir "${WAN22_RCM_ROOT}" \
     --strict
+fi
+
+if [[ "${WAN22_PREFLIGHT}" == "true" ]]; then
+  mkdir -p "${WAN22_PREFLIGHT_REPORT_DIR}"
+  echo "[INFO] Running Wan2.2 preflight checks"
+  echo "[INFO] WAN22_PREFLIGHT_REPORT_DIR=${WAN22_PREFLIGHT_REPORT_DIR}"
+  echo "[INFO] WAN22_PREFLIGHT_DTYPE=${WAN22_PREFLIGHT_DTYPE}"
+  echo "[INFO] WAN22_PREFLIGHT_PARITY=${WAN22_PREFLIGHT_PARITY}"
+  echo "[INFO] WAN22_PREFLIGHT_ROUTING=${WAN22_PREFLIGHT_ROUTING}"
+  echo "[INFO] WAN22_PREFLIGHT_PIPELINE=${WAN22_PREFLIGHT_PIPELINE}"
+  echo "[INFO] WAN22_PREFLIGHT_STUDENT_FWITHT=${WAN22_PREFLIGHT_STUDENT_FWITHT}"
+
+  if [[ "${WAN22_PREFLIGHT_PARITY}" == "true" ]]; then
+    PYTHONPATH="${WORKDIR}" python scripts/check_wan22_teacher_parity.py \
+      --model_root "${WAN22_DIFFUSERS_ROOT}" \
+      --converted_root "${WAN22_RCM_ROOT}" \
+      --dtypes "${WAN22_PREFLIGHT_DTYPE}" \
+      --seeds "${WAN22_PREFLIGHT_PARITY_SEEDS}" \
+      --timesteps "${WAN22_PREFLIGHT_PARITY_TIMESTEPS}" \
+      --latent_shapes "${WAN22_PREFLIGHT_PARITY_LATENT_SHAPES}" \
+      --save_json "${WAN22_PREFLIGHT_REPORT_DIR}/teacher_parity.json" \
+      --strict
+  fi
+
+  if [[ "${WAN22_PREFLIGHT_ROUTING}" == "true" ]]; then
+    PYTHONPATH="${WORKDIR}" python scripts/check_wan22_teacher_routing.py \
+      --boundary_ratios "${TEACHER_BOUNDARY_RATIO}" \
+      --save_json "${WAN22_PREFLIGHT_REPORT_DIR}/teacher_routing.json"
+  fi
+
+  if [[ "${WAN22_PREFLIGHT_PIPELINE}" == "true" ]]; then
+    PYTHONPATH="${WORKDIR}" python scripts/check_wan22_teacher_pipeline_smoke.py \
+      --model_root "${WAN22_DIFFUSERS_ROOT}" \
+      --converted_root "${WAN22_RCM_ROOT}" \
+      --teacher_boundary_ratio "${TEACHER_BOUNDARY_RATIO}" \
+      --dtype "${WAN22_PREFLIGHT_DTYPE}" \
+      --save_json "${WAN22_PREFLIGHT_REPORT_DIR}/teacher_pipeline_smoke.json" \
+      --strict
+  fi
+
+  if [[ "${WAN22_PREFLIGHT_STUDENT_FWITHT}" == "true" ]]; then
+    PYTHONPATH="${WORKDIR}" python scripts/check_wan22_student_fwitht_sanity.py \
+      --preset "${WAN22_PREFLIGHT_STUDENT_PRESET}" \
+      --dtype "${WAN22_PREFLIGHT_DTYPE}" \
+      --save_json "${WAN22_PREFLIGHT_REPORT_DIR}/student_fwitht_sanity.json" \
+      --strict
+  fi
 fi
 
 if [[ "${DATA_BACKEND}" == "opens2v" ]]; then

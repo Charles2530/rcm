@@ -151,6 +151,7 @@ bash scripts/train_wan22.sh
 `TEACHER_INIT_LOW_NOISE_WEIGHT` applies when `TEACHER_INIT_STRATEGY=average`.
 When `TEACHER_INIT_MODULE_AWARE=true`, per-module low-noise blend weights are used for embed/early/late/head groups.
 `TEACHER_BOUNDARY_RATIO` controls the high-noise (`transformer`) to low-noise (`transformer_2`) switch point.
+The default module-aware and boundary values in scripts are heuristic starter values, not validated global optima.
 
 Before training, run a parity check to verify converted teachers:
 ```bash
@@ -172,6 +173,17 @@ PYTHONPATH=. python scripts/check_wan22_teacher_routing.py \
     --save_json ./outputs/wan22_teacher_routing.json
 ```
 
+For pipeline-level teacher smoke (`denoise(net_type="teacher")`, boundary-near continuity and route composition), run:
+```bash
+PYTHONPATH=. python scripts/check_wan22_teacher_pipeline_smoke.py \
+    --model_root ./model/Wan2.2-T2V-A14B-Diffusers \
+    --converted_root ./model/Wan2.2-T2V-A14B-Diffusers-rcm \
+    --teacher_boundary_ratio 0.875 \
+    --dtype float32 \
+    --save_json ./outputs/wan22_teacher_pipeline_smoke.json \
+    --strict
+```
+
 For training-path JVP sanity (`student_F_withT`), run:
 ```bash
 PYTHONPATH=. python scripts/check_wan22_student_fwitht_sanity.py \
@@ -188,6 +200,22 @@ PYTHONPATH=. python scripts/check_wan22_jvp_sanity.py \
     --save_json ./outputs/wan22_jvp_sanity.json \
     --strict
 ```
+
+You can also gate training with preflight checks directly from launcher scripts:
+```bash
+WAN22_PREFLIGHT=true \
+WAN22_PREFLIGHT_PARITY=true \
+WAN22_PREFLIGHT_ROUTING=true \
+WAN22_PREFLIGHT_PIPELINE=true \
+WAN22_PREFLIGHT_STUDENT_FWITHT=true \
+WAN22_PREFLIGHT_DTYPE=float32 \
+WAN22_PREFLIGHT_STUDENT_PRESET=mini \
+bash scripts/train_wan22.sh
+```
+`WAN22_PREFLIGHT=true` enables checks and fails fast when strict checks fail.
+`WAN22_PREFLIGHT_PARITY=true` runs a reduced strict parity regression before training.
+`WAN22_PREFLIGHT_PIPELINE=true` runs strict teacher pipeline smoke around boundary routing.
+`WAN22_PREFLIGHT_STUDENT_FWITHT=true` runs strict `student_F_withT` sanity.
 
 #### OpenS2V-5M Raw Video Training
 `OpenS2V-5M` provides metadata in `Jsons/total_part*.json` with fields such as:
