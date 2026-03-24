@@ -86,6 +86,11 @@ class T2VDistillConfig_rCM:
     teacher_ckpt_2: str = ""
     teacher_init_strategy: str = "teacher_1"  # teacher_1 | teacher_2 | average
     teacher_init_low_noise_weight: float = 0.5
+    teacher_init_module_aware: bool = False
+    teacher_init_low_noise_weight_embed: float = 0.3
+    teacher_init_low_noise_weight_early: float = 0.3
+    teacher_init_low_noise_weight_late: float = 0.7
+    teacher_init_low_noise_weight_head: float = 0.8
     teacher_boundary_ratio: float = 0.875
     tangent_warmup: int = 0
     teacher_guidance: float = 5.0
@@ -138,6 +143,16 @@ class T2VDistillModel_rCM(ImaginaireModel):
                 "teacher_init_low_noise_weight must be in [0, 1] when teacher_init_strategy='average', "
                 f"got {config.teacher_init_low_noise_weight}"
             )
+        if config.teacher_init_module_aware:
+            module_aware_weights = {
+                "teacher_init_low_noise_weight_embed": config.teacher_init_low_noise_weight_embed,
+                "teacher_init_low_noise_weight_early": config.teacher_init_low_noise_weight_early,
+                "teacher_init_low_noise_weight_late": config.teacher_init_low_noise_weight_late,
+                "teacher_init_low_noise_weight_head": config.teacher_init_low_noise_weight_head,
+            }
+            for name, value in module_aware_weights.items():
+                if not (0.0 <= value <= 1.0):
+                    raise ValueError(f"{name} must be in [0, 1], got {value}")
         if config.teacher_ckpt_2 and not (0.0 <= config.teacher_boundary_ratio <= 1.0):
             raise ValueError(
                 "teacher_boundary_ratio must be in [0, 1] when teacher_ckpt_2 is provided, "
@@ -248,9 +263,9 @@ class T2VDistillModel_rCM(ImaginaireModel):
         teacher_1_state: Mapping[str, Any],
         teacher_2_state: Mapping[str, Any],
         low_noise_weight: float,
+        num_layers: Optional[int] = None,
     ) -> collections.OrderedDict:
         blended = collections.OrderedDict()
-        one_minus = 1.0 - low_noise_weight
 
         for key, value_1 in teacher_1_state.items():
             value_2 = teacher_2_state.get(key, None)
@@ -261,10 +276,36 @@ class T2VDistillModel_rCM(ImaginaireModel):
                 and value_1.is_floating_point()
                 and value_2.is_floating_point()
             ):
-                blended[key] = value_1 * one_minus + value_2.to(dtype=value_1.dtype) * low_noise_weight
+                key_low_noise_weight = self._get_low_noise_weight_for_key(key=key, low_noise_weight=low_noise_weight, num_layers=num_layers)
+                one_minus = 1.0 - key_low_noise_weight
+                blended[key] = value_1 * one_minus + value_2.to(dtype=value_1.dtype) * key_low_noise_weight
             else:
                 blended[key] = value_1
         return blended
+
+    def _get_low_noise_weight_for_key(self, key: str, low_noise_weight: float, num_layers: Optional[int]) -> float:
+        config = self.config
+        if not config.teacher_init_module_aware:
+            return low_noise_weight
+
+        if key.startswith("head.") or key.endswith(".modulation"):
+            return config.teacher_init_low_noise_weight_head
+
+        if key.startswith("patch_embedding.") or key.startswith("text_embedding.") or key.startswith("time_embedding.") or key.startswith("time_projection."):
+            return config.teacher_init_low_noise_weight_embed
+
+        if key.startswith("blocks.") and isinstance(num_layers, int) and num_layers > 0:
+            parts = key.split(".")
+            if len(parts) > 1 and parts[1].isdigit():
+                block_idx = int(parts[1])
+                early_cutoff = max(1, int(num_layers * (1.0 / 3.0)))
+                late_cutoff = max(early_cutoff, int(num_layers * (2.0 / 3.0)))
+                if block_idx < early_cutoff:
+                    return config.teacher_init_low_noise_weight_early
+                if block_idx >= late_cutoff:
+                    return config.teacher_init_low_noise_weight_late
+
+        return low_noise_weight
 
     def _get_student_init_state_dict(self) -> Mapping[str, Any]:
         config = self.config
@@ -284,10 +325,19 @@ class T2VDistillModel_rCM(ImaginaireModel):
                 f"Student init uses weighted expert average: "
                 f"teacher_1={1.0 - low_noise_weight:.3f}, teacher_2={low_noise_weight:.3f}."
             )
+            if config.teacher_init_module_aware:
+                log.info(
+                    "Module-aware blend is enabled: "
+                    f"embed={config.teacher_init_low_noise_weight_embed:.3f}, "
+                    f"early={config.teacher_init_low_noise_weight_early:.3f}, "
+                    f"late={config.teacher_init_low_noise_weight_late:.3f}, "
+                    f"head={config.teacher_init_low_noise_weight_head:.3f}"
+                )
             return self._blend_teacher_state_dict(
                 teacher_1_state=self.net_teacher.state_dict(),
                 teacher_2_state=self.net_teacher_2.state_dict(),
                 low_noise_weight=low_noise_weight,
+                num_layers=getattr(self.net_teacher, "num_layers", None),
             )
 
         if has_teacher_1:

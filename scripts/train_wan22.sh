@@ -27,6 +27,11 @@ set -euo pipefail
 #   MAX_ITER=100000
 #   TEACHER_INIT_STRATEGY=average|teacher_1|teacher_2
 #   TEACHER_INIT_LOW_NOISE_WEIGHT=0.7
+#   TEACHER_INIT_MODULE_AWARE=true|false
+#   TEACHER_INIT_LOW_NOISE_WEIGHT_EMBED=0.3
+#   TEACHER_INIT_LOW_NOISE_WEIGHT_EARLY=0.4
+#   TEACHER_INIT_LOW_NOISE_WEIGHT_LATE=0.8
+#   TEACHER_INIT_LOW_NOISE_WEIGHT_HEAD=0.85
 #   TEACHER_BOUNDARY_RATIO=0.875
 
 WORKDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -58,6 +63,11 @@ FSDP_SHARD_SIZE="${FSDP_SHARD_SIZE:-8}"
 MAX_ITER="${MAX_ITER:-100000}"
 TEACHER_INIT_STRATEGY="${TEACHER_INIT_STRATEGY:-average}"
 TEACHER_INIT_LOW_NOISE_WEIGHT="${TEACHER_INIT_LOW_NOISE_WEIGHT:-0.7}"
+TEACHER_INIT_MODULE_AWARE="${TEACHER_INIT_MODULE_AWARE:-true}"
+TEACHER_INIT_LOW_NOISE_WEIGHT_EMBED="${TEACHER_INIT_LOW_NOISE_WEIGHT_EMBED:-0.3}"
+TEACHER_INIT_LOW_NOISE_WEIGHT_EARLY="${TEACHER_INIT_LOW_NOISE_WEIGHT_EARLY:-0.4}"
+TEACHER_INIT_LOW_NOISE_WEIGHT_LATE="${TEACHER_INIT_LOW_NOISE_WEIGHT_LATE:-0.8}"
+TEACHER_INIT_LOW_NOISE_WEIGHT_HEAD="${TEACHER_INIT_LOW_NOISE_WEIGHT_HEAD:-0.85}"
 TEACHER_BOUNDARY_RATIO="${TEACHER_BOUNDARY_RATIO:-0.875}"
 
 TEACHER_CKPT_1="${WAN22_RCM_ROOT}/Wan2.2-T2V-A14B-transformer-rcm.pth"
@@ -103,6 +113,11 @@ echo "[INFO] DATA_BACKEND=${DATA_BACKEND}"
 echo "[INFO] WAN22_RCM_ROOT=${WAN22_RCM_ROOT}"
 echo "[INFO] TEACHER_INIT_STRATEGY=${TEACHER_INIT_STRATEGY}"
 echo "[INFO] TEACHER_INIT_LOW_NOISE_WEIGHT=${TEACHER_INIT_LOW_NOISE_WEIGHT}"
+echo "[INFO] TEACHER_INIT_MODULE_AWARE=${TEACHER_INIT_MODULE_AWARE}"
+echo "[INFO] TEACHER_INIT_LOW_NOISE_WEIGHT_EMBED=${TEACHER_INIT_LOW_NOISE_WEIGHT_EMBED}"
+echo "[INFO] TEACHER_INIT_LOW_NOISE_WEIGHT_EARLY=${TEACHER_INIT_LOW_NOISE_WEIGHT_EARLY}"
+echo "[INFO] TEACHER_INIT_LOW_NOISE_WEIGHT_LATE=${TEACHER_INIT_LOW_NOISE_WEIGHT_LATE}"
+echo "[INFO] TEACHER_INIT_LOW_NOISE_WEIGHT_HEAD=${TEACHER_INIT_LOW_NOISE_WEIGHT_HEAD}"
 echo "[INFO] TEACHER_BOUNDARY_RATIO=${TEACHER_BOUNDARY_RATIO}"
 
 if [[ "${DATA_BACKEND}" == "opens2v" ]]; then
@@ -124,6 +139,11 @@ if [[ "${DATA_BACKEND}" == "opens2v" ]]; then
     model.config.teacher_ckpt_2="${TEACHER_CKPT_2}" \
     model.config.teacher_init_strategy="${TEACHER_INIT_STRATEGY}" \
     model.config.teacher_init_low_noise_weight="${TEACHER_INIT_LOW_NOISE_WEIGHT}" \
+    model.config.teacher_init_module_aware="${TEACHER_INIT_MODULE_AWARE}" \
+    model.config.teacher_init_low_noise_weight_embed="${TEACHER_INIT_LOW_NOISE_WEIGHT_EMBED}" \
+    model.config.teacher_init_low_noise_weight_early="${TEACHER_INIT_LOW_NOISE_WEIGHT_EARLY}" \
+    model.config.teacher_init_low_noise_weight_late="${TEACHER_INIT_LOW_NOISE_WEIGHT_LATE}" \
+    model.config.teacher_init_low_noise_weight_head="${TEACHER_INIT_LOW_NOISE_WEIGHT_HEAD}" \
     model.config.teacher_boundary_ratio="${TEACHER_BOUNDARY_RATIO}" \
     model.config.tokenizer.vae_pth="${VAE_PATH}" \
     model.config.text_encoder_path="${T5_PATH}" \
@@ -144,6 +164,11 @@ else
     model.config.teacher_ckpt_2="${TEACHER_CKPT_2}" \
     model.config.teacher_init_strategy="${TEACHER_INIT_STRATEGY}" \
     model.config.teacher_init_low_noise_weight="${TEACHER_INIT_LOW_NOISE_WEIGHT}" \
+    model.config.teacher_init_module_aware="${TEACHER_INIT_MODULE_AWARE}" \
+    model.config.teacher_init_low_noise_weight_embed="${TEACHER_INIT_LOW_NOISE_WEIGHT_EMBED}" \
+    model.config.teacher_init_low_noise_weight_early="${TEACHER_INIT_LOW_NOISE_WEIGHT_EARLY}" \
+    model.config.teacher_init_low_noise_weight_late="${TEACHER_INIT_LOW_NOISE_WEIGHT_LATE}" \
+    model.config.teacher_init_low_noise_weight_head="${TEACHER_INIT_LOW_NOISE_WEIGHT_HEAD}" \
     model.config.teacher_boundary_ratio="${TEACHER_BOUNDARY_RATIO}" \
     model.config.tokenizer.vae_pth="${VAE_PATH}" \
     model.config.text_encoder_path="${T5_PATH}" \

@@ -139,11 +139,17 @@ You can also use the unified launcher and tune initialization/routing explicitly
 STAGE=scm DATA_BACKEND=webdataset \
 TEACHER_INIT_STRATEGY=average \
 TEACHER_INIT_LOW_NOISE_WEIGHT=0.7 \
+TEACHER_INIT_MODULE_AWARE=true \
+TEACHER_INIT_LOW_NOISE_WEIGHT_EMBED=0.3 \
+TEACHER_INIT_LOW_NOISE_WEIGHT_EARLY=0.4 \
+TEACHER_INIT_LOW_NOISE_WEIGHT_LATE=0.8 \
+TEACHER_INIT_LOW_NOISE_WEIGHT_HEAD=0.85 \
 TEACHER_BOUNDARY_RATIO=0.875 \
 bash scripts/train_wan22.sh
 ```
 `TEACHER_INIT_STRATEGY` supports `teacher_1|teacher_2|average`.
 `TEACHER_INIT_LOW_NOISE_WEIGHT` applies when `TEACHER_INIT_STRATEGY=average`.
+When `TEACHER_INIT_MODULE_AWARE=true`, per-module low-noise blend weights are used for embed/early/late/head groups.
 `TEACHER_BOUNDARY_RATIO` controls the high-noise (`transformer`) to low-noise (`transformer_2`) switch point.
 
 Before training, run a parity check to verify converted teachers:
@@ -151,6 +157,19 @@ Before training, run a parity check to verify converted teachers:
 PYTHONPATH=. python scripts/check_wan22_teacher_parity.py \
     --model_root ./model/Wan2.2-T2V-A14B-Diffusers \
     --converted_root ./model/Wan2.2-T2V-A14B-Diffusers-rcm \
+    --dtypes float32,bfloat16 \
+    --seeds 0,1,2,3,4,5,6,7 \
+    --timesteps 0,50,250,500,750,999 \
+    --latent_shapes 21x60x106,21x48x84 \
+    --save_json ./outputs/wan22_teacher_parity.json \
+    --strict
+```
+
+For JVP-path sanity (dense-student approximation), run:
+```bash
+PYTHONPATH=. python scripts/check_wan22_jvp_sanity.py \
+    --dtype float32 \
+    --save_json ./outputs/wan22_jvp_sanity.json \
     --strict
 ```
 
