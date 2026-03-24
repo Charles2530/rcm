@@ -288,11 +288,8 @@ class T2VDistillModel_rCM(ImaginaireModel):
         if not config.teacher_init_module_aware:
             return low_noise_weight
 
-        if key.startswith("head.") or key.endswith(".modulation"):
+        if key.startswith("head."):
             return config.teacher_init_low_noise_weight_head
-
-        if key.startswith("patch_embedding.") or key.startswith("text_embedding.") or key.startswith("time_embedding.") or key.startswith("time_projection."):
-            return config.teacher_init_low_noise_weight_embed
 
         if key.startswith("blocks.") and isinstance(num_layers, int) and num_layers > 0:
             parts = key.split(".")
@@ -304,6 +301,9 @@ class T2VDistillModel_rCM(ImaginaireModel):
                     return config.teacher_init_low_noise_weight_early
                 if block_idx >= late_cutoff:
                     return config.teacher_init_low_noise_weight_late
+
+        if key.startswith("patch_embedding.") or key.startswith("text_embedding.") or key.startswith("time_embedding.") or key.startswith("time_projection."):
+            return config.teacher_init_low_noise_weight_embed
 
         return low_noise_weight
 

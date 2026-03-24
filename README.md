@@ -165,7 +165,23 @@ PYTHONPATH=. python scripts/check_wan22_teacher_parity.py \
     --strict
 ```
 
-For JVP-path sanity (dense-student approximation), run:
+To inspect boundary-based dual-teacher routing behavior, run:
+```bash
+PYTHONPATH=. python scripts/check_wan22_teacher_routing.py \
+    --boundary_ratios 0.75,0.8,0.875,0.9 \
+    --save_json ./outputs/wan22_teacher_routing.json
+```
+
+For training-path JVP sanity (`student_F_withT`), run:
+```bash
+PYTHONPATH=. python scripts/check_wan22_student_fwitht_sanity.py \
+    --preset small \
+    --dtype float32 \
+    --save_json ./outputs/wan22_student_fwitht_sanity.json \
+    --strict
+```
+
+For local operator-level JVP sanity (small dense proxy), run:
 ```bash
 PYTHONPATH=. python scripts/check_wan22_jvp_sanity.py \
     --dtype float32 \
