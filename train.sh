@@ -21,9 +21,30 @@ NPROC_PER_NODE="${NPROC_PER_NODE:-8}"
 MASTER_PORT="${MASTER_PORT:-29666}"
 BATCH_SIZE="${BATCH_SIZE:-1}"
 NUM_WORKERS="${NUM_WORKERS:-1}"
-CP_SIZE="${CP_SIZE:-8}"
-FSDP_SHARD_SIZE="${FSDP_SHARD_SIZE:-8}"
 GRAD_ACCUM_ITER="${GRAD_ACCUM_ITER:-1}"
+
+# Per-experiment safe defaults.
+# For Wan2.1 1.3B, CP=8 is invalid (num_heads=12 is not divisible by 8).
+if [[ -z "${CP_SIZE:-}" ]]; then
+    case "${EXPERIMENT}" in
+        *1pt3B*) CP_SIZE=1 ;;
+        *14B* | *a14b*) CP_SIZE=8 ;;
+        *) CP_SIZE=1 ;;
+    esac
+fi
+if [[ -z "${FSDP_SHARD_SIZE:-}" ]]; then
+    case "${EXPERIMENT}" in
+        *1pt3B*) FSDP_SHARD_SIZE=4 ;;
+        *14B* | *a14b*) FSDP_SHARD_SIZE=8 ;;
+        *) FSDP_SHARD_SIZE=8 ;;
+    esac
+fi
+
+MODEL_NUM_HEADS=0
+case "${EXPERIMENT}" in
+    *1pt3B*) MODEL_NUM_HEADS=12 ;;
+    *14B* | *a14b*) MODEL_NUM_HEADS=40 ;;
+esac
 
 # Visualization callback is very memory hungry; keep it off by default on multi-GPU training.
 ENABLE_VIZ_SAMPLE="${ENABLE_VIZ_SAMPLE:-false}"
@@ -43,10 +64,22 @@ if (( NPROC_PER_NODE % CP_SIZE != 0 )); then
     echo "[ERROR] NPROC_PER_NODE (${NPROC_PER_NODE}) must be divisible by CP_SIZE (${CP_SIZE})."
     exit 1
 fi
+if (( NPROC_PER_NODE % FSDP_SHARD_SIZE != 0 )); then
+    echo "[ERROR] NPROC_PER_NODE (${NPROC_PER_NODE}) must be divisible by FSDP_SHARD_SIZE (${FSDP_SHARD_SIZE})."
+    exit 1
+fi
+if (( MODEL_NUM_HEADS > 0 && CP_SIZE > 1 && MODEL_NUM_HEADS % CP_SIZE != 0 )); then
+    echo "[ERROR] Invalid CP_SIZE=${CP_SIZE} for ${EXPERIMENT}: model num_heads=${MODEL_NUM_HEADS} is not divisible by CP_SIZE."
+    echo "[HINT] For 1.3B use CP_SIZE in {1,2,3,4,6,12}. Recommended CP_SIZE=1."
+    exit 1
+fi
 
 echo "[INFO] Launching training"
 echo "[INFO] EXPERIMENT=${EXPERIMENT}"
 echo "[INFO] NPROC_PER_NODE=${NPROC_PER_NODE}, CP_SIZE=${CP_SIZE}, FSDP_SHARD_SIZE=${FSDP_SHARD_SIZE}"
+if (( MODEL_NUM_HEADS > 0 )); then
+    echo "[INFO] MODEL_NUM_HEADS=${MODEL_NUM_HEADS}"
+fi
 echo "[INFO] DATASET_ROOT=${DATASET_ROOT}"
 
 torchrun --nproc_per_node="${NPROC_PER_NODE}" --master_port="${MASTER_PORT}" \
