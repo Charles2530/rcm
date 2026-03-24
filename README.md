@@ -138,12 +138,12 @@ You can also use the unified launcher and tune initialization/routing explicitly
 ```bash
 STAGE=scm DATA_BACKEND=webdataset \
 TEACHER_INIT_STRATEGY=average \
-TEACHER_INIT_LOW_NOISE_WEIGHT=0.7 \
-TEACHER_INIT_MODULE_AWARE=true \
-TEACHER_INIT_LOW_NOISE_WEIGHT_EMBED=0.3 \
-TEACHER_INIT_LOW_NOISE_WEIGHT_EARLY=0.4 \
-TEACHER_INIT_LOW_NOISE_WEIGHT_LATE=0.8 \
-TEACHER_INIT_LOW_NOISE_WEIGHT_HEAD=0.85 \
+TEACHER_INIT_LOW_NOISE_WEIGHT=0.5 \
+TEACHER_INIT_MODULE_AWARE=false \
+TEACHER_INIT_LOW_NOISE_WEIGHT_EMBED=0.5 \
+TEACHER_INIT_LOW_NOISE_WEIGHT_EARLY=0.5 \
+TEACHER_INIT_LOW_NOISE_WEIGHT_LATE=0.5 \
+TEACHER_INIT_LOW_NOISE_WEIGHT_HEAD=0.5 \
 TEACHER_BOUNDARY_RATIO=0.875 \
 bash scripts/train_wan22.sh
 ```
@@ -151,7 +151,7 @@ bash scripts/train_wan22.sh
 `TEACHER_INIT_LOW_NOISE_WEIGHT` applies when `TEACHER_INIT_STRATEGY=average`.
 When `TEACHER_INIT_MODULE_AWARE=true`, per-module low-noise blend weights are used for embed/early/late/head groups.
 `TEACHER_BOUNDARY_RATIO` controls the high-noise (`transformer`) to low-noise (`transformer_2`) switch point.
-The default module-aware and boundary values in scripts are heuristic starter values, not validated global optima.
+Current script/config defaults are neutral heuristics for baseline safety, not validated global optima.
 
 Before training, run a parity check to verify converted teachers:
 ```bash
@@ -184,6 +184,19 @@ PYTHONPATH=. python scripts/check_wan22_teacher_pipeline_smoke.py \
     --strict
 ```
 
+For training-state preflight (real `T2VDistillModel_rCM` instantiation + init consistency + `student_F_withT` finite differences + teacher pipeline consistency), run:
+```bash
+PYTHONPATH=. python scripts/check_wan22_training_state_preflight.py \
+    --config rcm/configs/registry_distill.py \
+    --experiment wan2pt2_a14b_res480p_t2v_scm \
+    --teacher_ckpt ./model/Wan2.2-T2V-A14B-Diffusers-rcm/Wan2.2-T2V-A14B-transformer-rcm.pth \
+    --teacher_ckpt_2 ./model/Wan2.2-T2V-A14B-Diffusers-rcm/Wan2.2-T2V-A14B-transformer_2-rcm.pth \
+    --precision float32 \
+    --batch_size 1 \
+    --save_json ./outputs/wan22_training_state_preflight.json \
+    --strict
+```
+
 For training-path JVP sanity (`student_F_withT`), run:
 ```bash
 PYTHONPATH=. python scripts/check_wan22_student_fwitht_sanity.py \
@@ -206,16 +219,20 @@ You can also gate training with preflight checks directly from launcher scripts:
 WAN22_PREFLIGHT=true \
 WAN22_PREFLIGHT_PARITY=true \
 WAN22_PREFLIGHT_ROUTING=true \
-WAN22_PREFLIGHT_PIPELINE=true \
-WAN22_PREFLIGHT_STUDENT_FWITHT=true \
+WAN22_PREFLIGHT_TRAINING_STATE=true \
 WAN22_PREFLIGHT_DTYPE=float32 \
-WAN22_PREFLIGHT_STUDENT_PRESET=mini \
+WAN22_PREFLIGHT_BATCH_SIZE=1 \
 bash scripts/train_wan22.sh
 ```
 `WAN22_PREFLIGHT=true` enables checks and fails fast when strict checks fail.
 `WAN22_PREFLIGHT_PARITY=true` runs a reduced strict parity regression before training.
-`WAN22_PREFLIGHT_PIPELINE=true` runs strict teacher pipeline smoke around boundary routing.
-`WAN22_PREFLIGHT_STUDENT_FWITHT=true` runs strict `student_F_withT` sanity.
+`WAN22_PREFLIGHT_TRAINING_STATE=true` runs strict training-state preflight (model init + `student_F_withT` + teacher pipeline).
+
+For a minimal short-run ablation matrix on defaults/boundary, run:
+```bash
+MAX_ITER=300 STAGE=scm DATA_BACKEND=webdataset \
+bash scripts/run_wan22_short_ablation.sh
+```
 
 #### OpenS2V-5M Raw Video Training
 `OpenS2V-5M` provides metadata in `Jsons/total_part*.json` with fields such as:
