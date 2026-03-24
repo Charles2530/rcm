@@ -20,6 +20,7 @@ set -euo pipefail
 #   CP_SIZE=8
 #   FSDP_SHARD_SIZE=8
 #   MAX_ITER=100000
+#   TEACHER_BOUNDARY_RATIO=0.875
 
 WORKDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${WORKDIR}"
@@ -45,6 +46,7 @@ TARGET_ASPECT_RATIO="${TARGET_ASPECT_RATIO:-16:9}"
 CP_SIZE="${CP_SIZE:-8}"
 FSDP_SHARD_SIZE="${FSDP_SHARD_SIZE:-8}"
 MAX_ITER="${MAX_ITER:-100000}"
+TEACHER_BOUNDARY_RATIO="${TEACHER_BOUNDARY_RATIO:-0.875}"
 
 TEACHER_CKPT_1="${WAN22_RCM_ROOT}/Wan2.2-T2V-A14B-transformer-rcm.pth"
 TEACHER_CKPT_2="${WAN22_RCM_ROOT}/Wan2.2-T2V-A14B-transformer_2-rcm.pth"
@@ -73,6 +75,7 @@ echo "[INFO] Launching training"
 echo "[INFO] EXPERIMENT=${EXPERIMENT}"
 echo "[INFO] OPENS2V_ROOT=${OPENS2V_ROOT}"
 echo "[INFO] WAN22_RCM_ROOT=${WAN22_RCM_ROOT}"
+echo "[INFO] TEACHER_BOUNDARY_RATIO=${TEACHER_BOUNDARY_RATIO}"
 
 torchrun --nproc_per_node="${NPROC_PER_NODE}" --master_port="${MASTER_PORT}" \
   -m scripts.train --config=rcm/configs/registry_distill.py -- \
@@ -89,6 +92,7 @@ torchrun --nproc_per_node="${NPROC_PER_NODE}" --master_port="${MASTER_PORT}" \
   model.config.resolution="${TARGET_RESOLUTION}" \
   model.config.teacher_ckpt="${TEACHER_CKPT_1}" \
   model.config.teacher_ckpt_2="${TEACHER_CKPT_2}" \
+  model.config.teacher_boundary_ratio="${TEACHER_BOUNDARY_RATIO}" \
   model.config.tokenizer.vae_pth="${VAE_PATH}" \
   model.config.text_encoder_path="${T5_PATH}" \
   model.config.neg_embed_path="${NEG_EMB_PATH}"

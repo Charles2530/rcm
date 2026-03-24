@@ -129,6 +129,12 @@ torchrun --nproc_per_node=8 \
 experiment=wan2pt2_a14b_res480p_t2v_rcm
 ```
 
+You can also use the unified launcher and tune the expert boundary explicitly:
+```bash
+STAGE=scm DATA_BACKEND=webdataset TEACHER_BOUNDARY_RATIO=0.875 bash scripts/train_wan22.sh
+```
+`TEACHER_BOUNDARY_RATIO` controls the high-noise (`transformer`) to low-noise (`transformer_2`) switch point.
+
 #### OpenS2V-5M Raw Video Training
 `OpenS2V-5M` provides metadata in `Jsons/total_part*.json` with fields such as:
 - `metadata.path` (relative video path)

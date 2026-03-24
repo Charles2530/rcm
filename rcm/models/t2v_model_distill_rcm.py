@@ -126,6 +126,11 @@ class T2VDistillModel_rCM(ImaginaireModel):
         super().__init__()
 
         self.config = config
+        if config.teacher_ckpt_2 and not (0.0 <= config.teacher_boundary_ratio <= 1.0):
+            raise ValueError(
+                "teacher_boundary_ratio must be in [0, 1] when teacher_ckpt_2 is provided, "
+                f"got {config.teacher_boundary_ratio}"
+            )
 
         self.precision = {
             "float32": torch.float32,
@@ -435,16 +440,20 @@ class T2VDistillModel_rCM(ImaginaireModel):
                 kwargs[key] = value[mask]
         return type(condition)(**kwargs)
 
-    def _teacher_2_mask(self, c_noise_B_1_T_1_1: torch.Tensor) -> Optional[torch.Tensor]:
+    def _teacher_2_mask_from_noise_labels(self, noise_B_T: torch.Tensor) -> Optional[torch.Tensor]:
         if getattr(self, "net_teacher_2", None) is None:
             return None
         threshold = self.config.teacher_boundary_ratio * self.config.rectified_flow_t_scaling_factor
-        noise_B_T = c_noise_B_1_T_1_1.squeeze(dim=[1, 3, 4]).float()
+        noise_B_T = noise_B_T.float()
         if noise_B_T.ndim == 2:
             noise_B = noise_B_T.mean(dim=1)
         else:
             noise_B = noise_B_T
         return noise_B <= threshold
+
+    def _teacher_2_mask(self, c_noise_B_1_T_1_1: torch.Tensor) -> Optional[torch.Tensor]:
+        noise_B_T = c_noise_B_1_T_1_1.squeeze(dim=[1, 3, 4])
+        return self._teacher_2_mask_from_noise_labels(noise_B_T)
 
     def _forward_net(
         self,
@@ -459,14 +468,14 @@ class T2VDistillModel_rCM(ImaginaireModel):
             **condition.to_dict(),
         ).float()
 
-    def _forward_teacher_dual(
+    def _forward_teacher_dual_by_noise_labels(
         self,
         x_B_C_T_H_W: torch.Tensor,
         timesteps_B_T: torch.Tensor,
-        c_noise_B_1_T_1_1: torch.Tensor,
+        noise_labels_B_T: torch.Tensor,
         condition: TextCondition,
     ) -> torch.Tensor:
-        mask_teacher_2 = self._teacher_2_mask(c_noise_B_1_T_1_1)
+        mask_teacher_2 = self._teacher_2_mask_from_noise_labels(noise_labels_B_T)
         if mask_teacher_2 is None:
             return self._forward_net(self.net_teacher, x_B_C_T_H_W, timesteps_B_T, condition)
 
@@ -494,6 +503,20 @@ class T2VDistillModel_rCM(ImaginaireModel):
                 cond_teacher_2,
             )
         return out
+
+    def _forward_teacher_dual(
+        self,
+        x_B_C_T_H_W: torch.Tensor,
+        timesteps_B_T: torch.Tensor,
+        c_noise_B_1_T_1_1: torch.Tensor,
+        condition: TextCondition,
+    ) -> torch.Tensor:
+        return self._forward_teacher_dual_by_noise_labels(
+            x_B_C_T_H_W=x_B_C_T_H_W,
+            timesteps_B_T=timesteps_B_T,
+            noise_labels_B_T=c_noise_B_1_T_1_1.squeeze(dim=[1, 3, 4]),
+            condition=condition,
+        )
 
     def denoise(
         self,
@@ -945,12 +968,20 @@ class T2VDistillModel_rCM(ImaginaireModel):
             timesteps = t * ones
 
             with torch.no_grad():
-                v_cond = self.net_teacher(
-                    x_B_C_T_H_W=x.to(**self.tensor_kwargs), timesteps_B_T=timesteps.to(**self.tensor_kwargs), **condition.to_dict()
-                ).float()
-                v_uncond = self.net_teacher(
-                    x_B_C_T_H_W=x.to(**self.tensor_kwargs), timesteps_B_T=timesteps.to(**self.tensor_kwargs), **uncondition.to_dict()
-                ).float()
+                x_input = x.to(**self.tensor_kwargs)
+                timesteps_input = timesteps.to(**self.tensor_kwargs)
+                v_cond = self._forward_teacher_dual_by_noise_labels(
+                    x_B_C_T_H_W=x_input,
+                    timesteps_B_T=timesteps_input,
+                    noise_labels_B_T=timesteps_input,
+                    condition=condition,
+                )
+                v_uncond = self._forward_teacher_dual_by_noise_labels(
+                    x_B_C_T_H_W=x_input,
+                    timesteps_B_T=timesteps_input,
+                    noise_labels_B_T=timesteps_input,
+                    condition=uncondition,
+                )
 
             v_pred = v_uncond + self.config.teacher_guidance * (v_cond - v_uncond)
 
