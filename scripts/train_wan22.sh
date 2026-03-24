@@ -25,6 +25,8 @@ set -euo pipefail
 #   CP_SIZE=8
 #   FSDP_SHARD_SIZE=8
 #   MAX_ITER=100000
+#   TEACHER_INIT_STRATEGY=average|teacher_1|teacher_2
+#   TEACHER_INIT_LOW_NOISE_WEIGHT=0.7
 #   TEACHER_BOUNDARY_RATIO=0.875
 
 WORKDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -54,6 +56,8 @@ TARGET_ASPECT_RATIO="${TARGET_ASPECT_RATIO:-16:9}"
 CP_SIZE="${CP_SIZE:-8}"
 FSDP_SHARD_SIZE="${FSDP_SHARD_SIZE:-8}"
 MAX_ITER="${MAX_ITER:-100000}"
+TEACHER_INIT_STRATEGY="${TEACHER_INIT_STRATEGY:-average}"
+TEACHER_INIT_LOW_NOISE_WEIGHT="${TEACHER_INIT_LOW_NOISE_WEIGHT:-0.7}"
 TEACHER_BOUNDARY_RATIO="${TEACHER_BOUNDARY_RATIO:-0.875}"
 
 TEACHER_CKPT_1="${WAN22_RCM_ROOT}/Wan2.2-T2V-A14B-transformer-rcm.pth"
@@ -97,6 +101,8 @@ echo "[INFO] Launching Wan2.2 training"
 echo "[INFO] EXPERIMENT=${EXPERIMENT}"
 echo "[INFO] DATA_BACKEND=${DATA_BACKEND}"
 echo "[INFO] WAN22_RCM_ROOT=${WAN22_RCM_ROOT}"
+echo "[INFO] TEACHER_INIT_STRATEGY=${TEACHER_INIT_STRATEGY}"
+echo "[INFO] TEACHER_INIT_LOW_NOISE_WEIGHT=${TEACHER_INIT_LOW_NOISE_WEIGHT}"
 echo "[INFO] TEACHER_BOUNDARY_RATIO=${TEACHER_BOUNDARY_RATIO}"
 
 if [[ "${DATA_BACKEND}" == "opens2v" ]]; then
@@ -116,6 +122,8 @@ if [[ "${DATA_BACKEND}" == "opens2v" ]]; then
     model.config.resolution="${TARGET_RESOLUTION}" \
     model.config.teacher_ckpt="${TEACHER_CKPT_1}" \
     model.config.teacher_ckpt_2="${TEACHER_CKPT_2}" \
+    model.config.teacher_init_strategy="${TEACHER_INIT_STRATEGY}" \
+    model.config.teacher_init_low_noise_weight="${TEACHER_INIT_LOW_NOISE_WEIGHT}" \
     model.config.teacher_boundary_ratio="${TEACHER_BOUNDARY_RATIO}" \
     model.config.tokenizer.vae_pth="${VAE_PATH}" \
     model.config.text_encoder_path="${T5_PATH}" \
@@ -134,6 +142,8 @@ else
     model.config.resolution="${TARGET_RESOLUTION}" \
     model.config.teacher_ckpt="${TEACHER_CKPT_1}" \
     model.config.teacher_ckpt_2="${TEACHER_CKPT_2}" \
+    model.config.teacher_init_strategy="${TEACHER_INIT_STRATEGY}" \
+    model.config.teacher_init_low_noise_weight="${TEACHER_INIT_LOW_NOISE_WEIGHT}" \
     model.config.teacher_boundary_ratio="${TEACHER_BOUNDARY_RATIO}" \
     model.config.tokenizer.vae_pth="${VAE_PATH}" \
     model.config.text_encoder_path="${T5_PATH}" \

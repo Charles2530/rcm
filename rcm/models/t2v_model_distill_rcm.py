@@ -84,6 +84,8 @@ class T2VDistillConfig_rCM:
     optimizer_fake_score: LazyDict = None
     teacher_ckpt: str = ""
     teacher_ckpt_2: str = ""
+    teacher_init_strategy: str = "teacher_1"  # teacher_1 | teacher_2 | average
+    teacher_init_low_noise_weight: float = 0.5
     teacher_boundary_ratio: float = 0.875
     tangent_warmup: int = 0
     teacher_guidance: float = 5.0
@@ -126,6 +128,16 @@ class T2VDistillModel_rCM(ImaginaireModel):
         super().__init__()
 
         self.config = config
+        if config.teacher_init_strategy not in {"teacher_1", "teacher_2", "average"}:
+            raise ValueError(
+                "teacher_init_strategy must be one of {'teacher_1', 'teacher_2', 'average'}, "
+                f"got {config.teacher_init_strategy}"
+            )
+        if config.teacher_init_strategy == "average" and not (0.0 <= config.teacher_init_low_noise_weight <= 1.0):
+            raise ValueError(
+                "teacher_init_low_noise_weight must be in [0, 1] when teacher_init_strategy='average', "
+                f"got {config.teacher_init_low_noise_weight}"
+            )
         if config.teacher_ckpt_2 and not (0.0 <= config.teacher_boundary_ratio <= 1.0):
             raise ValueError(
                 "teacher_boundary_ratio must be in [0, 1] when teacher_ckpt_2 is provided, "
@@ -231,6 +243,61 @@ class T2VDistillModel_rCM(ImaginaireModel):
             return collections.OrderedDict((k[len(prefix_dot) :], v) for k, v in normalized.items() if k.startswith(prefix_dot))
         return normalized
 
+    def _blend_teacher_state_dict(
+        self,
+        teacher_1_state: Mapping[str, Any],
+        teacher_2_state: Mapping[str, Any],
+        low_noise_weight: float,
+    ) -> collections.OrderedDict:
+        blended = collections.OrderedDict()
+        one_minus = 1.0 - low_noise_weight
+
+        for key, value_1 in teacher_1_state.items():
+            value_2 = teacher_2_state.get(key, None)
+            if (
+                isinstance(value_1, torch.Tensor)
+                and isinstance(value_2, torch.Tensor)
+                and value_1.shape == value_2.shape
+                and value_1.is_floating_point()
+                and value_2.is_floating_point()
+            ):
+                blended[key] = value_1 * one_minus + value_2.to(dtype=value_1.dtype) * low_noise_weight
+            else:
+                blended[key] = value_1
+        return blended
+
+    def _get_student_init_state_dict(self) -> Mapping[str, Any]:
+        config = self.config
+        has_teacher_1 = bool(config.teacher_ckpt)
+        has_teacher_2 = bool(config.teacher_ckpt_2) and (self.net_teacher_2 is not None)
+
+        if has_teacher_1 and has_teacher_2:
+            strategy = config.teacher_init_strategy
+            if strategy == "teacher_1":
+                log.info("Student init uses teacher_1 (high-noise expert).")
+                return self.net_teacher.state_dict()
+            if strategy == "teacher_2":
+                log.info("Student init uses teacher_2 (low-noise expert).")
+                return self.net_teacher_2.state_dict()
+            low_noise_weight = config.teacher_init_low_noise_weight
+            log.info(
+                f"Student init uses weighted expert average: "
+                f"teacher_1={1.0 - low_noise_weight:.3f}, teacher_2={low_noise_weight:.3f}."
+            )
+            return self._blend_teacher_state_dict(
+                teacher_1_state=self.net_teacher.state_dict(),
+                teacher_2_state=self.net_teacher_2.state_dict(),
+                low_noise_weight=low_noise_weight,
+            )
+
+        if has_teacher_1:
+            log.info("Student init uses teacher_1 (single-teacher setup).")
+            return self.net_teacher.state_dict()
+        if has_teacher_2:
+            log.info("Student init uses teacher_2 (single-teacher setup).")
+            return self.net_teacher_2.state_dict()
+        raise RuntimeError("No teacher checkpoint is available for student initialization.")
+
     def load_ckpt_to_net(self, net, ckpt_path, prefix="net"):
         if not self._is_dcp_checkpoint(ckpt_path):
             state_dict = self._strip_state_dict_prefix(self._load_regular_checkpoint(ckpt_path), prefix=prefix)
@@ -295,10 +362,10 @@ class T2VDistillModel_rCM(ImaginaireModel):
                 self.load_ckpt_to_net(self.net_teacher_2, config.teacher_ckpt_2)
 
             if config.teacher_ckpt or config.teacher_ckpt_2:
-                teacher_for_init = self.net_teacher if config.teacher_ckpt else self.net_teacher_2
-                self.net.load_state_dict(teacher_for_init.state_dict(), strict=False)
+                student_init_state_dict = self._get_student_init_state_dict()
+                self.net.load_state_dict(student_init_state_dict, strict=False)
                 if self.net_fake_score:
-                    self.net_fake_score.load_state_dict(teacher_for_init.state_dict(), strict=False)
+                    self.net_fake_score.load_state_dict(student_init_state_dict, strict=False)
             self.net_teacher.requires_grad_(False)
             if self.net_teacher_2 is not None:
                 self.net_teacher_2.requires_grad_(False)

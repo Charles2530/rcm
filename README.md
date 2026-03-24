@@ -108,6 +108,11 @@ Our training code also support:
 #### Wan2.2 T2V A14B Prototype (Diffusers -> rCM)
 This repo now includes a research-prototype adaptation path for `Wan-AI/Wan2.2-T2V-A14B-Diffusers`:
 
+> Current status note:
+> - Teacher side: dual experts (`transformer` / `transformer_2`) are supported with boundary-based routing.
+> - Student side: current JVP path is a dense-student approximation (`wan2pt2_t2v_jvp.py` reuses Wan2.1 JVP implementation).
+> - This should be treated as a research prototype baseline, not a finalized Wan2.2 MoE student implementation.
+
 1) Convert Diffusers transformer experts (`transformer`, `transformer_2`) to rCM key format:
 ```bash
 PYTHONPATH=. python scripts/convert_wan22_diffusers_to_rcm.py \
@@ -129,11 +134,25 @@ torchrun --nproc_per_node=8 \
 experiment=wan2pt2_a14b_res480p_t2v_rcm
 ```
 
-You can also use the unified launcher and tune the expert boundary explicitly:
+You can also use the unified launcher and tune initialization/routing explicitly:
 ```bash
-STAGE=scm DATA_BACKEND=webdataset TEACHER_BOUNDARY_RATIO=0.875 bash scripts/train_wan22.sh
+STAGE=scm DATA_BACKEND=webdataset \
+TEACHER_INIT_STRATEGY=average \
+TEACHER_INIT_LOW_NOISE_WEIGHT=0.7 \
+TEACHER_BOUNDARY_RATIO=0.875 \
+bash scripts/train_wan22.sh
 ```
+`TEACHER_INIT_STRATEGY` supports `teacher_1|teacher_2|average`.
+`TEACHER_INIT_LOW_NOISE_WEIGHT` applies when `TEACHER_INIT_STRATEGY=average`.
 `TEACHER_BOUNDARY_RATIO` controls the high-noise (`transformer`) to low-noise (`transformer_2`) switch point.
+
+Before training, run a parity check to verify converted teachers:
+```bash
+PYTHONPATH=. python scripts/check_wan22_teacher_parity.py \
+    --model_root ./model/Wan2.2-T2V-A14B-Diffusers \
+    --converted_root ./model/Wan2.2-T2V-A14B-Diffusers-rcm \
+    --strict
+```
 
 #### OpenS2V-5M Raw Video Training
 `OpenS2V-5M` provides metadata in `Jsons/total_part*.json` with fields such as:

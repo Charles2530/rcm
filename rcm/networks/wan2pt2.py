@@ -156,7 +156,7 @@ def sinusoidal_embedding_1d(dim, position):
 def rope_apply(x, freqs):
     """
     Optimized version of rope_apply using flash_attention's rotary embedding implementation.
-    This version processes the entire batch at once for efficiency.
+    Falls back to a torch implementation when flash-attn is unavailable.
 
     Args:
         x (Tensor): Input tensor with shape [batch_size, seq_len, n_heads, head_dim]
@@ -172,8 +172,20 @@ def rope_apply(x, freqs):
     cos = torch.cos(freqs).to(torch.float32)
     sin = torch.sin(freqs).to(torch.float32)
 
-    # Apply the rotation
-    rotated = flash_apply_rotary_emb(x.to(torch.float32), cos, sin, interleaved=True, inplace=False)
+    if flash_apply_rotary_emb is not None:
+        # Fast path with flash-attn rotary kernel.
+        rotated = flash_apply_rotary_emb(x.to(torch.float32), cos, sin, interleaved=True, inplace=False)
+        return rotated.to(x.dtype)
+
+    # Compatibility fallback for environments without flash-attn.
+    x_float = x.to(torch.float32).reshape(batch_size, seq_len, n_heads, head_dim // 2, 2)
+    x_even, x_odd = x_float[..., 0], x_float[..., 1]
+    cos = cos.view(1, seq_len, 1, head_dim // 2)
+    sin = sin.view(1, seq_len, 1, head_dim // 2)
+
+    rotated_even = x_even * cos - x_odd * sin
+    rotated_odd = x_even * sin + x_odd * cos
+    rotated = torch.stack((rotated_even, rotated_odd), dim=-1).reshape(batch_size, seq_len, n_heads, head_dim)
 
     return rotated.to(x.dtype)
 

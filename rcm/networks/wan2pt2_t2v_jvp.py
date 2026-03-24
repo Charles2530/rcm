@@ -29,8 +29,11 @@ class WanModel_T2V_JVP(_WanModel_JVP):
 
     This class intentionally reuses the Wan2.1 JVP implementation because
     Wan2.1-14B and Wan2.2-14B transformer parameterization are shape-compatible
-    in the released checkpoints. MoE-style dual-expert routing for Wan2.2 is
-    implemented outside this module (teacher checkpoint 1/2 + boundary switch).
+    in the released checkpoints. In the current prototype this is used as a
+    dense-student approximation under dual-expert Wan2.2 teachers.
+
+    MoE-style dual-expert routing for Wan2.2 is implemented outside this module
+    (teacher checkpoint 1/2 + boundary switch).
     """
 
     def __init__(
